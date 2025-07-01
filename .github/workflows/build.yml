@@ -1,0 +1,59 @@
+name: Build Friends
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        arch: [x64, ia32]
+        exclude:
+          # macOS and Windows GitHub-hosted runners are x64 only
+          - os: macos-latest
+            arch: ia32
+          - os: windows-latest
+            arch: ia32
+    runs-on: ${{ matrix.os }}
+    name: Build on ${{ matrix.os }} - ${{ matrix.arch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Patch rebuild command for architecture
+        shell: bash
+        run: |
+          ARCH="${{ matrix.arch }}"
+          if [ "$ARCH" = "ia32" ]; then
+            # Adjust rebuild-leveldb script for ia32
+            if [[ "${{ matrix.os }}" == windows-latest ]]; then
+              sed -i 's/--arch=x64/--arch=ia32/' package.json
+            else
+              sed -i.bak 's/--arch=x64/--arch=ia32/' package.json
+            fi
+          fi
+
+      - name: Rebuild leveldown for Electron
+        run: npm run rebuild-leveldb
+
+      - name: Archive build output
+        run: |
+          mkdir -p dist
+          cp -r * dist/ || true
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: friends-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/
